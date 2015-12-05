@@ -9,7 +9,7 @@
 
 #pragma newdecls required
 
-#define PLUGIN_VERSION "0.1.0"
+#define PLUGIN_VERSION "0.1.1"
 public Plugin myinfo = {
 	name = "[TF2] Bot Map Runner",
 	author = "nosoop",
@@ -29,7 +29,7 @@ public void OnPluginStart() {
 	RegAdminCmd("sm_botmap", AdminCmd_BotMap, ADMFLAG_CHANGEMAP, "Immediately changes to a bot-compatible map.");
 	RegAdminCmd("sm_setnextbotmap", AdminCmd_SetNextBotMap, ADMFLAG_CHANGEMAP, "Changes the next map to a bot-compatible map.");
 	
-	RegAdminCmd("sm_botmap_refresh", AdminCmd_SetNextBotMap, ADMFLAG_CHANGEMAP, "Refreshes the bot map list.");
+	RegAdminCmd("sm_botmap_refresh", AdminCmd_RefreshMapList, ADMFLAG_CHANGEMAP, "Refreshes the bot map list.");
 	
 	HookEvent("teamplay_game_over", Hook_OnGameOver, EventHookMode_PostNoCopy);
 	HookEvent("player_disconnect", Hook_OnPlayerDisconnect, EventHookMode_Post);
@@ -42,7 +42,7 @@ public void OnPluginStart() {
 public void OnMapStart() {
 	GenerateBotMapLists();
 	
-	// TODO playercount detection because it might not include connecting clients
+	// TODO playercount detection because it doesn't include connecting clients
 	if (IsLowPlayerCount() && !IsCurrentMapSuitable()) {
 		// TODO make sure that the map exclusion doesn't include the current map
 		PrintToServer("No players detected.  Changing map in 1.5 minutes...");
@@ -65,6 +65,11 @@ public Action AdminCmd_SetNextBotMap(int client, int nArgs) {
 	return Plugin_Handled;
 }
 
+public Action AdminCmd_RefreshMapList(int client, int nArgs) {
+	GenerateBotMapLists();
+	return Plugin_Handled;
+}
+
 public void Hook_OnGameOver(Event event, const char[] name, bool dontBroadcast) {
 	if (IsLowPlayerCount()) {
 		char nextmap[MAP_NAME_LENGTH];
@@ -83,7 +88,15 @@ public Action Hook_OnPlayerDisconnect(Event event, const char[] name, bool dontB
 }
 
 public Action Timer_ChangeMap(Handle timer) {
-	ForceChangeBotLevel();
+	// Recheck to make sure the server's still dead before switching out
+	if (IsLowPlayerCount()) {
+		char nextmap[MAP_NAME_LENGTH];
+		
+		int choice = GetRandomInt(0, g_ValidBotMaps.Length-1);
+		g_ValidBotMaps.GetString(choice, nextmap, sizeof(nextmap));
+		
+		ForceChangeLevel(nextmap, "No active players; changed to a bot-playable map.");
+	}
 	return Plugin_Handled;
 }
 
@@ -104,13 +117,7 @@ void GenerateBotMapLists() {
 	
 	GetExcludeMapList(g_ExcludedBotMaps);
 	
-	/** 
-	 * TODO parse overrides
-	 *
-	 * They should be in the following format, otherwise ignore the line:
-	 * + workshop/map
-	 * - plr_hightower_event
-	 */
+	ParseOverrides();
 	
 	char map[MAP_NAME_LENGTH];
 	ArrayList mapList = new ArrayList(MAP_NAME_LENGTH);
@@ -118,7 +125,7 @@ void GenerateBotMapLists() {
 		for (int i = 0; i < mapList.Length; i++) {
 			mapList.GetString(i, map, sizeof(map));
 			
-			// TODO resolve map names
+			// TODO resolve map names when 1.8 hits stable
 			// Right now, it doesn't support Workshop maps unless manually included.
 			
 			if (IsSuitableBotMap(map)) {
@@ -127,6 +134,8 @@ void GenerateBotMapLists() {
 		}
 	}
 	delete mapList;
+	
+	LogMessage("%d maps currently available for bots to play on.", g_ValidBotMaps.Length);
 }
 
 /**
@@ -148,17 +157,6 @@ bool OverrideNextMapForBot(char[] nextmap, int length, bool bForce = true) {
 	// if not a valid map then throw error "map doesn't exist"
 	
 	return false;
-}
-
-void ForceChangeBotLevel() {
-	if (IsLowPlayerCount()) {
-		char nextmap[MAP_NAME_LENGTH];
-		
-		int choice = GetRandomInt(0, g_ValidBotMaps.Length-1);
-		g_ValidBotMaps.GetString(choice, nextmap, sizeof(nextmap));
-		
-		ForceChangeLevel(nextmap, "No active players; changed to a bot-playable map.");
-	}
 }
 
 bool IsSuitableBotMap(const char[] map) {
@@ -211,6 +209,34 @@ bool MapHasNavigationMesh(const char[] map) {
 	Format(navFilePath, sizeof(navFilePath), "maps/%s.nav", map);
 	
 	return FileExists(navFilePath, true);
+}
+
+void ParseOverrides() {
+	char filePath[PLATFORM_MAX_PATH];
+	BuildPath(Path_SM, filePath, PLATFORM_MAX_PATH, OVERRIDE_MAPLIST);
+	
+	if (FileExists(filePath)) {
+		File overrideReader = OpenFile(filePath, "r");
+		
+		if (overrideReader != null) {
+			char line[MAP_NAME_LENGTH + 2]; // + or -, a space, and the map name
+			
+			while (overrideReader.ReadLine(line, sizeof(line))) {
+				TrimString(line);
+				
+				if (strlen(line) < 2) {
+					continue;
+				} else if (FindCharInString(line, '+') == 0) {
+					g_IncludedBotMaps.PushString(line[2]);
+				} else if (FindCharInString(line, '-') == 0) {
+					g_ExcludedBotMaps.PushString(line[2]);
+				} 
+				// else ignore
+			}
+			
+			delete overrideReader;
+		}
+	}
 }
 
 /**
