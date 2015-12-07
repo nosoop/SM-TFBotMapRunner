@@ -9,7 +9,7 @@
 
 #pragma newdecls required
 
-#define PLUGIN_VERSION "0.2.0"
+#define PLUGIN_VERSION "0.2.1"
 public Plugin myinfo = {
 	name = "[TF2] Bot Map Runner",
 	author = "nosoop",
@@ -62,8 +62,8 @@ public void OnMapStart() {
 }
 
 public Action AdminCmd_BotMap(int client, int nArgs) {
-	ShowActivity(client, "Changing to a bot supported map...");
-	CreateTimer(5.0, Timer_ForceChangeMap, _, TIMER_FLAG_NO_MAPCHANGE);
+	ShowActivity(client, "Changing to a random bot supported map...");
+	CreateTimer(5.0, Timer_AdminCmdBotMap, _, TIMER_FLAG_NO_MAPCHANGE);
 	return Plugin_Handled;
 }
 
@@ -125,13 +125,13 @@ public Action Timer_ChangeMap(Handle timer) {
 	return Plugin_Handled;
 }
 
-public Action Timer_ForceChangeMap(Handle timer) {
+public Action Timer_AdminCmdBotMap(Handle timer) {
 	char nextmap[MAP_NAME_LENGTH];
 	
 	int choice = GetRandomInt(0, g_ValidBotMaps.Length-1);
 	g_ValidBotMaps.GetString(choice, nextmap, sizeof(nextmap));
 	
-	ForceChangeLevel(nextmap, "Map overridden for bot support.");
+	ForceChangeLevel(nextmap, "sm_botmap command");
 	return Plugin_Handled;
 }
 
