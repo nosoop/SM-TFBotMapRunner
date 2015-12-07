@@ -9,7 +9,7 @@
 
 #pragma newdecls required
 
-#define PLUGIN_VERSION "0.1.1"
+#define PLUGIN_VERSION "0.2.0"
 public Plugin myinfo = {
 	name = "[TF2] Bot Map Runner",
 	author = "nosoop",
@@ -23,6 +23,8 @@ public Plugin myinfo = {
 
 ArrayList g_ValidBotMaps, g_ExcludedBotMaps, g_IncludedBotMaps;
 
+float g_flServerMapTriggerTime;
+
 public void OnPluginStart() {
 	LoadTranslations("mapchooser.phrases");
 	
@@ -34,6 +36,11 @@ public void OnPluginStart() {
 	HookEvent("teamplay_game_over", Hook_OnGameOver, EventHookMode_PostNoCopy);
 	HookEvent("player_disconnect", Hook_OnPlayerDisconnect, EventHookMode_Post);
 	
+	HookEvent("player_spawn", Hook_OnPlayerSpawn, EventHookMode_Post);
+	
+	// TODO ConVars:
+	// sm_botmap_playercount (0 ... n | quota); // quota reads tf_bot_quota or sm_bot_quota
+	
 	g_ValidBotMaps = new ArrayList(MAP_NAME_LENGTH);
 	g_IncludedBotMaps = new ArrayList(MAP_NAME_LENGTH);
 	g_ExcludedBotMaps = new ArrayList(MAP_NAME_LENGTH);
@@ -42,11 +49,15 @@ public void OnPluginStart() {
 public void OnMapStart() {
 	GenerateBotMapLists();
 	
+	g_flServerMapTriggerTime = 0.0;
+	
 	// TODO playercount detection because it doesn't include connecting clients
 	if (IsLowPlayerCount() && !IsCurrentMapSuitable()) {
 		// TODO make sure that the map exclusion doesn't include the current map
 		PrintToServer("No players detected.  Changing map in 1.5 minutes...");
 		CreateTimer(90.0, Timer_ChangeMap, _, TIMER_FLAG_NO_MAPCHANGE);
+		
+		g_flServerMapTriggerTime = GetGameTime() + 90.0;
 	}
 }
 
@@ -76,14 +87,28 @@ public void Hook_OnGameOver(Event event, const char[] name, bool dontBroadcast) 
 		OverrideNextMapForBot(nextmap, sizeof(nextmap));
 		
 		LogMessage("Not many active players.  Changing next map to %s for bot support.", nextmap);
+		
+		// TODO resolve map name
 		PrintToChatAll("Server's pretty empty.  Changing the next map to %s so the bots keep playing.", nextmap);
 	}
 }
 
 public Action Hook_OnPlayerDisconnect(Event event, const char[] name, bool dontBroadcast) {
 	if (!event.GetBool("bot") && IsLowPlayerCount() && !IsCurrentMapSuitable()) {
-		PrintToServer("Server has emptied.  Changing map in 1.5 minutes...");
+		PrintToServer("Server has emptied.  Attempt to change map in 1.5 minutes...");
+		
+		PrintToChatAll("Looks like the server emptied out!  If nobody joins, we'll switch to a bot-supported map in 1.5 minutes.");
 		CreateTimer(90.0, Timer_ChangeMap, _, TIMER_FLAG_NO_MAPCHANGE);
+	}
+}
+
+public Action Hook_OnPlayerSpawn(Event event, const char[] name, bool dontBroadcast) {
+	if (GetGameTime() < g_flServerMapTriggerTime && IsLowPlayerCount() && !IsCurrentMapSuitable()) {
+		int client = GetClientOfUserId(event.GetInt("userid"));
+		
+		int nSecondsToSwitch = RoundToCeil(g_flServerMapTriggerTime - GetGameTime());
+		
+		PrintToChat(client, "Server's looking empty.  Just sit tight; we'll switch to a bot-supported map in %d seconds if nobody joins.", nSecondsToSwitch);
 	}
 }
 
@@ -219,14 +244,16 @@ void ParseOverrides() {
 		File overrideReader = OpenFile(filePath, "r");
 		
 		if (overrideReader != null) {
-			char line[MAP_NAME_LENGTH + 2]; // + or -, a space, and the map name
+			// expect a + or -, a space, and the map name for overrides
+			char line[MAP_NAME_LENGTH + 2];
 			
 			while (overrideReader.ReadLine(line, sizeof(line))) {
 				TrimString(line);
 				
-				if (strlen(line) < 2) {
+				if (strlen(line) < 3 || FindCharInString(line, ' ') != 1) {
 					continue;
 				} else if (FindCharInString(line, '+') == 0) {
+					// TODO make sure this is a valid map?
 					g_IncludedBotMaps.PushString(line[2]);
 				} else if (FindCharInString(line, '-') == 0) {
 					g_ExcludedBotMaps.PushString(line[2]);
