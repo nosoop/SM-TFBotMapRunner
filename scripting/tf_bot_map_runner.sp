@@ -9,7 +9,7 @@
 
 #pragma newdecls required
 
-#define PLUGIN_VERSION "0.2.1"
+#define PLUGIN_VERSION "0.3.0"
 public Plugin myinfo = {
 	name = "[TF2] Bot Map Runner",
 	author = "nosoop",
@@ -145,13 +145,31 @@ void GenerateBotMapLists() {
 	ParseOverrides();
 	
 	char map[MAP_NAME_LENGTH];
+	
+	for (int i = 0; i < g_IncludedBotMaps.Length; i++) {
+		g_IncludedBotMaps.GetString(i, map, sizeof(map));
+		FindMap(map, map, sizeof(map));
+		
+		g_IncludedBotMaps.SetString(i, map);
+	}
+	
+	for (int i = 0; i < g_ExcludedBotMaps.Length; i++) {
+		g_ExcludedBotMaps.GetString(i, map, sizeof(map));
+		FindMap(map, map, sizeof(map));
+		
+		g_ExcludedBotMaps.SetString(i, map);
+	}
+	
 	ArrayList mapList = new ArrayList(MAP_NAME_LENGTH);
 	if (ReadMapList(mapList) != INVALID_HANDLE) {
 		for (int i = 0; i < mapList.Length; i++) {
 			mapList.GetString(i, map, sizeof(map));
 			
-			// TODO resolve map names when 1.8 hits stable
-			// Right now, it doesn't support Workshop maps unless manually included.
+			/**
+			 * Current stable *does* have map resolving capabilities.
+			 * It's not listed in the API, though...
+			 */
+			FindMap(map, map, sizeof(map));
 			
 			if (IsSuitableBotMap(map)) {
 				g_ValidBotMaps.PushString(map);
@@ -232,6 +250,11 @@ bool MapIncluded(const char[] map) {
 bool MapHasNavigationMesh(const char[] map) {
 	char navFilePath[PLATFORM_MAX_PATH];
 	Format(navFilePath, sizeof(navFilePath), "maps/%s.nav", map);
+	
+	/**
+	 * TODO check current map for navmesh; if exists (i.e., mesh exists inside map file), and
+	 * not excluded, then add to separate list and store list on plugin unload.
+	 */
 	
 	return FileExists(navFilePath, true);
 }
