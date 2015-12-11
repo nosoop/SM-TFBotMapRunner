@@ -9,7 +9,7 @@
 
 #pragma newdecls required
 
-#define PLUGIN_VERSION "0.3.0"
+#define PLUGIN_VERSION "0.3.1"
 public Plugin myinfo = {
 	name = "[TF2] Bot Map Runner",
 	author = "nosoop",
@@ -21,13 +21,15 @@ public Plugin myinfo = {
 #define MAP_NAME_LENGTH 96
 #define OVERRIDE_MAPLIST "configs/bot_map_runner.txt"
 
-ArrayList g_ValidBotMaps, g_ExcludedBotMaps, g_IncludedBotMaps;
+ArrayList g_ValidBotMaps;
 
 float g_flServerMapTriggerTime;
 
 public void OnPluginStart() {
 	LoadTranslations("mapchooser.phrases");
 	
+	CreateConVar("sm_botmaprunner_version", PLUGIN_VERSION, "Current version of Bot Map Runner.", FCVAR_PLUGIN | FCVAR_NOTIFY | FCVAR_DONTRECORD);
+
 	RegAdminCmd("sm_botmap", AdminCmd_BotMap, ADMFLAG_CHANGEMAP, "Immediately changes to a bot-compatible map.");
 	RegAdminCmd("sm_setnextbotmap", AdminCmd_SetNextBotMap, ADMFLAG_CHANGEMAP, "Changes the next map to a bot-compatible map.");
 	
@@ -42,8 +44,6 @@ public void OnPluginStart() {
 	// sm_botmap_playercount (0 ... n | quota); // quota reads tf_bot_quota or sm_bot_quota
 	
 	g_ValidBotMaps = new ArrayList(MAP_NAME_LENGTH);
-	g_IncludedBotMaps = new ArrayList(MAP_NAME_LENGTH);
-	g_ExcludedBotMaps = new ArrayList(MAP_NAME_LENGTH);
 }
 
 public void OnMapStart() {
@@ -137,27 +137,29 @@ public Action Timer_AdminCmdBotMap(Handle timer) {
 
 void GenerateBotMapLists() {
 	g_ValidBotMaps.Clear();
-	g_ExcludedBotMaps.Clear();
-	g_IncludedBotMaps.Clear();
 	
-	GetExcludeMapList(g_ExcludedBotMaps);
+	ArrayList includedBotMaps = new ArrayList(MAP_NAME_LENGTH);
+	ArrayList excludedBotMaps = new ArrayList(MAP_NAME_LENGTH);
 	
-	ParseOverrides();
+	GetExcludeMapList(excludedBotMaps);
+	
+	ParseOverrides(includedBotMaps, excludedBotMaps);
 	
 	char map[MAP_NAME_LENGTH];
 	
-	for (int i = 0; i < g_IncludedBotMaps.Length; i++) {
-		g_IncludedBotMaps.GetString(i, map, sizeof(map));
+	// Resolve map names
+	for (int i = 0; i < includedBotMaps.Length; i++) {
+		includedBotMaps.GetString(i, map, sizeof(map));
 		FindMap(map, map, sizeof(map));
 		
-		g_IncludedBotMaps.SetString(i, map);
+		includedBotMaps.SetString(i, map);
 	}
 	
-	for (int i = 0; i < g_ExcludedBotMaps.Length; i++) {
-		g_ExcludedBotMaps.GetString(i, map, sizeof(map));
+	for (int i = 0; i < excludedBotMaps.Length; i++) {
+		excludedBotMaps.GetString(i, map, sizeof(map));
 		FindMap(map, map, sizeof(map));
 		
-		g_ExcludedBotMaps.SetString(i, map);
+		excludedBotMaps.SetString(i, map);
 	}
 	
 	ArrayList mapList = new ArrayList(MAP_NAME_LENGTH);
@@ -171,12 +173,15 @@ void GenerateBotMapLists() {
 			 */
 			FindMap(map, map, sizeof(map));
 			
-			if (IsSuitableBotMap(map)) {
+			if (includedBotMaps.FindString(map) > -1 ||
+					(excludedBotMaps.FindString(map) == -1 && MapHasNavigationMesh(map)) ) {
 				g_ValidBotMaps.PushString(map);
 			}
 		}
 	}
 	delete mapList;
+	delete includedBotMaps;
+	delete excludedBotMaps;
 	
 	LogMessage("%d maps currently available for bots to play on.", g_ValidBotMaps.Length);
 }
@@ -187,6 +192,7 @@ void GenerateBotMapLists() {
  */
 bool OverrideNextMapForBot(char[] nextmap, int length, bool bForce = true) {
 	bool bNextMapSet = GetNextMap(nextmap, length);
+	FindMap(nextmap, nextmap, length);
 	
 	if (!bNextMapSet || !IsSuitableBotMap(nextmap) || bForce) {
 		int choice = GetRandomInt(0, g_ValidBotMaps.Length-1);
@@ -203,7 +209,7 @@ bool OverrideNextMapForBot(char[] nextmap, int length, bool bForce = true) {
 }
 
 bool IsSuitableBotMap(const char[] map) {
-	return MapIncluded(map) || (!MapExcluded(map) && MapHasNavigationMesh(map));
+	return g_ValidBotMaps.FindString(map) > -1;
 }
 
 bool IsCurrentMapSuitable() {
@@ -222,28 +228,6 @@ bool IsLowPlayerCount() {
 }
 
 /**
- * Returns true if the given map has been excluded from the bot map list, even if it has a
- * valid navigation mesh.  Useful for Halloween maps that have navmeshes tailored for bots.
- * 
- * The list of excluded maps also includes maps that were recently played.
- */
-bool MapExcluded(const char[] map) {
-	return (g_ExcludedBotMaps.FindString(map) > -1);
-}
-
-/**
- * Returns true if the given map has been included in the bot map list.	 Useful for maps that
- * contain embedded navigation meshes, as we can't find that out through
- * MapHasNavigationMesh().
- * 
- * Do note that only maps in the full map list will be added to the potential bot maps,
- * regardless of whether or not it's been added to the override list.
- */
-bool MapIncluded(const char[] map) {
-	return (g_IncludedBotMaps.FindString(map) > -1);
-}
-
-/**
  * Returns true if the given map has a corresponding navigation mesh file.
  * (This does not check inside maps, and it only strictly checks by filename.)
  */
@@ -259,7 +243,7 @@ bool MapHasNavigationMesh(const char[] map) {
 	return FileExists(navFilePath, true);
 }
 
-void ParseOverrides() {
+void ParseOverrides(ArrayList includedMaps, ArrayList excludedMaps) {
 	char filePath[PLATFORM_MAX_PATH];
 	BuildPath(Path_SM, filePath, PLATFORM_MAX_PATH, OVERRIDE_MAPLIST);
 	
@@ -277,9 +261,9 @@ void ParseOverrides() {
 					continue;
 				} else if (FindCharInString(line, '+') == 0) {
 					// TODO make sure this is a valid map?
-					g_IncludedBotMaps.PushString(line[2]);
+					includedMaps.PushString(line[2]);
 				} else if (FindCharInString(line, '-') == 0) {
-					g_ExcludedBotMaps.PushString(line[2]);
+					excludedMaps.PushString(line[2]);
 				} 
 				// else ignore
 			}
