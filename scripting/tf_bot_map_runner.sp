@@ -9,7 +9,7 @@
 
 #pragma newdecls required
 
-#define PLUGIN_VERSION "0.3.2"
+#define PLUGIN_VERSION "0.3.3"
 public Plugin myinfo = {
 	name = "[TF2] Bot Map Runner",
 	author = "nosoop",
@@ -54,9 +54,7 @@ public void OnMapStart() {
 	// We check here to make sure we're not stranded on a bot map
 	if (IsLowPlayerCount() && !IsCurrentMapSuitable() && GetConnectingPlayerCount() == 0) {
 		PrintToServer("No players detected.  Changing map in 1.5 minutes...");
-		CreateTimer(90.0, Timer_ChangeMap, _, TIMER_FLAG_NO_MAPCHANGE);
-		
-		g_flServerMapTriggerTime = GetGameTime() + 90.0;
+		CreateBotChangeMapTimer(90.0);
 	}
 }
 
@@ -97,23 +95,26 @@ public Action Hook_OnPlayerDisconnect(Event event, const char[] name, bool dontB
 		PrintToServer("Server has emptied.  Attempt to change map in 1.5 minutes...");
 		
 		PrintToChatAll("Looks like the server emptied out!  If nobody joins, we'll switch to a bot-supported map in 1.5 minutes.");
-		CreateTimer(90.0, Timer_ChangeMap, _, TIMER_FLAG_NO_MAPCHANGE);
+		CreateBotChangeMapTimer(90.0);
 	}
 }
 
 public Action Hook_OnPlayerSpawn(Event event, const char[] name, bool dontBroadcast) {
+	// TODO make it notify once
 	if (GetGameTime() < g_flServerMapTriggerTime && IsLowPlayerCount() && !IsCurrentMapSuitable()) {
 		int client = GetClientOfUserId(event.GetInt("userid"));
 		
 		int nSecondsToSwitch = RoundToCeil(g_flServerMapTriggerTime - GetGameTime());
 		
-		PrintToChat(client, "Server's looking empty.  Just sit tight; we'll switch to a bot-supported map in %d seconds if nobody joins.", nSecondsToSwitch);
+		// TODO language files
+		PrintToChat(client, "We'll switch to a bot-supported map in %d seconds if nobody joins.  Sit tight!", nSecondsToSwitch);
 	}
 }
 
 public Action Timer_ChangeMap(Handle timer) {
 	// Recheck to make sure the server's still dead before switching out
-	if (IsLowPlayerCount()) {
+	// If another timer was created with a different time, use that instead
+	if (RoundToFloor(GetGameTime()) >= RoundToFloor(g_flServerMapTriggerTime) && IsLowPlayerCount()) {
 		char nextmap[MAP_NAME_LENGTH];
 		
 		int choice = GetRandomInt(0, g_ValidBotMaps.Length-1);
@@ -183,6 +184,11 @@ void GenerateBotMapLists() {
 	delete excludedBotMaps;
 	
 	LogMessage("%d maps currently available for bots to play on.", g_ValidBotMaps.Length);
+}
+
+void CreateBotChangeMapTimer(float interval) {
+	g_flServerMapTriggerTime = GetGameTime() + interval;
+	CreateTimer(interval, Timer_ChangeMap, _, TIMER_FLAG_NO_MAPCHANGE);
 }
 
 /**
