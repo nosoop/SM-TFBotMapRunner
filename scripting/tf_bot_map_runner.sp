@@ -9,7 +9,7 @@
 
 #pragma newdecls required
 
-#define PLUGIN_VERSION "0.3.3"
+#define PLUGIN_VERSION "0.3.4"
 public Plugin myinfo = {
 	name = "[TF2] Bot Map Runner",
 	author = "nosoop",
@@ -197,9 +197,9 @@ void CreateBotChangeMapTimer(float interval) {
  */
 bool OverrideNextMapForBot(char[] nextmap, int length, bool bForce = true) {
 	bool bNextMapSet = GetNextMap(nextmap, length);
-	FindMap(nextmap, nextmap, length);
+	FindMapResult mapFind = FindMap(nextmap, nextmap, length);
 	
-	if (!bNextMapSet || !IsSuitableBotMap(nextmap) || bForce) {
+	if (!bNextMapSet || mapFind == FindMap_NotFound || !IsSuitableBotMap(nextmap) || bForce) {
 		int choice = GetRandomInt(0, g_ValidBotMaps.Length-1);
 		g_ValidBotMaps.GetString(choice, nextmap, length);
 		
@@ -207,8 +207,6 @@ bool OverrideNextMapForBot(char[] nextmap, int length, bool bForce = true) {
 		
 		return true;
 	}
-	
-	// if not a valid map then throw error "map doesn't exist"
 	
 	return false;
 }
