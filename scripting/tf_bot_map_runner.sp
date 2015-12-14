@@ -9,7 +9,7 @@
 
 #pragma newdecls required
 
-#define PLUGIN_VERSION "0.3.1"
+#define PLUGIN_VERSION "0.3.2"
 public Plugin myinfo = {
 	name = "[TF2] Bot Map Runner",
 	author = "nosoop",
@@ -51,9 +51,8 @@ public void OnMapStart() {
 	
 	g_flServerMapTriggerTime = 0.0;
 	
-	// TODO playercount detection because it doesn't include connecting clients
-	if (IsLowPlayerCount() && !IsCurrentMapSuitable()) {
-		// TODO make sure that the map exclusion doesn't include the current map
+	// We check here to make sure we're not stranded on a bot map
+	if (IsLowPlayerCount() && !IsCurrentMapSuitable() && GetConnectingPlayerCount() == 0) {
 		PrintToServer("No players detected.  Changing map in 1.5 minutes...");
 		CreateTimer(90.0, Timer_ChangeMap, _, TIMER_FLAG_NO_MAPCHANGE);
 		
@@ -284,4 +283,8 @@ int GetLivePlayerCount() {
 		}
 	}
 	return nPlayers;
+}
+
+int GetConnectingPlayerCount() {
+	return GetClientCount(false) - GetClientCount(true);
 }
