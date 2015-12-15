@@ -9,7 +9,7 @@
 
 #pragma newdecls required
 
-#define PLUGIN_VERSION "0.4.0"
+#define PLUGIN_VERSION "0.4.1"
 public Plugin myinfo = {
 	name = "[TF2] Bot Map Runner",
 	author = "nosoop",
@@ -109,13 +109,14 @@ public void Hook_OnGameOver(Event event, const char[] name, bool dontBroadcast) 
 }
 
 public Action Hook_OnPlayerDisconnect(Event event, const char[] name, bool dontBroadcast) {
-	if (!event.GetBool("bot") && IsLowPlayerCount() && !IsCurrentMapSuitable()) {
+	if (!event.GetBool("bot") && IsLowPlayerCount() && !IsCurrentMapSuitable()
+			&& !BotChangeMapTimerExists()) {
 		float flSecondsToNextMap = g_ConVarDurationFromDisconnect.FloatValue;
 		int nSecondsToNextMap = RoundToFloor(flSecondsToNextMap);
 		PrintToServer("Server has emptied.  Attempt to change map in %d seconds...", nSecondsToNextMap);
 		
 		PrintToChatAll("Looks like the server emptied out!  " ...
-				"If nobody joins, we'll switch to a bot-supported map in %d seconds.", nSecondsToNextMap);
+				"If not enough people join, we'll switch to a bot-supported map in %d seconds.", nSecondsToNextMap);
 		CreateBotChangeMapTimer(flSecondsToNextMap);
 	}
 }
@@ -210,6 +211,13 @@ void GenerateBotMapLists() {
 void CreateBotChangeMapTimer(float interval) {
 	g_flServerMapTriggerTime = GetGameTime() + interval;
 	CreateTimer(interval, Timer_ChangeMap, _, TIMER_FLAG_NO_MAPCHANGE);
+}
+
+/**
+ * Returns true if there is a timer set to check the server for deadness.
+ */
+bool BotChangeMapTimerExists() {
+	return g_flServerMapTriggerTime > GetGameTime();
 }
 
 /**
