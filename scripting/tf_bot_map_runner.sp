@@ -9,7 +9,7 @@
 
 #pragma newdecls required
 
-#define PLUGIN_VERSION "0.4.1"
+#define PLUGIN_VERSION "0.4.2"
 public Plugin myinfo = {
 	name = "[TF2] Bot Map Runner",
 	author = "nosoop",
@@ -252,7 +252,8 @@ bool IsCurrentMapSuitable() {
 }
 
 /**
- * Returns true if the human player count is low enough to consider overriding the next map.
+ * Returns true if the human player count is below the minimum threshold; we should consider switching maps.
+ * If the threshold is at 1, that means the server must be empty before a map is changed.
  */
 bool IsLowPlayerCount() {
 	// TODO extended support
@@ -266,12 +267,13 @@ int GetPlayerCountThreshold() {
 	char thresholdValue[8];
 	g_ConVarPlayerCountThreshold.GetString(thresholdValue, sizeof(thresholdValue));
 	
+	int nPlayerThreshold;
 	if (StrEqual(thresholdValue, "quota", false)) {
 		// Always recheck to make sure it wasn't loaded without our knowledge
 		ConVar conVarBotQuota = FindConVar("sm_bot_quota");
 		
 		if (conVarBotQuota != null) {
-			return conVarBotQuota.IntValue;
+			nPlayerThreshold = conVarBotQuota.IntValue;
 		} else {
 			// TODO make sure quota mode is not "match"
 			conVarBotQuota = FindConVar("tf_bot_quota");
@@ -281,14 +283,16 @@ int GetPlayerCountThreshold() {
 			conVarQuotaMode.GetString(quotaMode, sizeof(quotaMode));
 			
 			if (!StrEqual(quotaMode, "match")) {
-				return conVarBotQuota.IntValue;
+				nPlayerThreshold = conVarBotQuota.IntValue;
 			} else {
 				// If you're matching, then I guess you always want bots to run.
-				return MaxClients;
+				nPlayerThreshold = MaxClients;
 			}
 		}
+	} else {
+		nPlayerThreshold = g_ConVarPlayerCountThreshold.IntValue;
 	}
-	return g_ConVarPlayerCountThreshold.IntValue;
+	return nPlayerThreshold > 1 ? nPlayerThreshold : 1;
 }
 
 /**
