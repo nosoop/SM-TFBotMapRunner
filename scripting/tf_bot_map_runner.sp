@@ -9,7 +9,7 @@
 
 #pragma newdecls required
 
-#define PLUGIN_VERSION "0.3.4"
+#define PLUGIN_VERSION "0.4.0"
 public Plugin myinfo = {
 	name = "[TF2] Bot Map Runner",
 	author = "nosoop",
@@ -25,10 +25,12 @@ ArrayList g_ValidBotMaps;
 
 float g_flServerMapTriggerTime;
 
+ConVar g_ConVarDurationFromMapStart, g_ConVarDurationFromDisconnect, g_ConVarPlayerCountThreshold;
+
 public void OnPluginStart() {
 	LoadTranslations("mapchooser.phrases");
 	
-	CreateConVar("sm_botmaprunner_version", PLUGIN_VERSION, "Current version of Bot Map Runner.", FCVAR_PLUGIN | FCVAR_NOTIFY | FCVAR_DONTRECORD);
+	CreateConVar("botmaprunner_version", PLUGIN_VERSION, "Current version of Bot Map Runner.", FCVAR_PLUGIN | FCVAR_NOTIFY | FCVAR_DONTRECORD);
 
 	RegAdminCmd("sm_botmap", AdminCmd_BotMap, ADMFLAG_CHANGEMAP, "Immediately changes to a bot-compatible map.");
 	RegAdminCmd("sm_setnextbotmap", AdminCmd_SetNextBotMap, ADMFLAG_CHANGEMAP, "Changes the next map to a bot-compatible map.");
@@ -41,7 +43,20 @@ public void OnPluginStart() {
 	HookEvent("player_spawn", Hook_OnPlayerSpawn, EventHookMode_Post);
 	
 	// TODO ConVars:
-	// sm_botmap_playercount (0 ... n | quota); // quota reads tf_bot_quota or sm_bot_quota
+	g_ConVarPlayerCountThreshold = CreateConVar("sm_botmap_playercount", "2",
+			"Server is considered below the player count threshold if there are fewer than this number of players.  " ...
+			"If set to 'quota', then the server uses tf_bot_quota or sm_bot_quota as the threshold.",
+			FCVAR_PLUGIN);
+	
+	g_ConVarDurationFromMapStart = CreateConVar("sm_botmap_duration_frommapstart", "90.0",
+			"How long before a map change if the server is below the player count threshold on map start.",
+			FCVAR_PLUGIN, true, 0.0);
+	
+	g_ConVarDurationFromDisconnect = CreateConVar("sm_botmap_duration_fromdisconnect", "90.0",
+			"How long before a map change when a player disconnect puts the player count below the threshold.",
+			FCVAR_PLUGIN, true, 0.0);
+	
+	AutoExecConfig();
 	
 	g_ValidBotMaps = new ArrayList(MAP_NAME_LENGTH);
 }
@@ -50,11 +65,14 @@ public void OnMapStart() {
 	GenerateBotMapLists();
 	
 	g_flServerMapTriggerTime = 0.0;
-	
-	// We check here to make sure we're not stranded on a bot map
+}
+
+public void OnConfigsExecuted() {
+	// We check here to make sure we're not stranded on a bot map and cvar data has been updated.
 	if (IsLowPlayerCount() && !IsCurrentMapSuitable() && GetConnectingPlayerCount() == 0) {
-		PrintToServer("No players detected.  Changing map in 1.5 minutes...");
-		CreateBotChangeMapTimer(90.0);
+		PrintToServer("No players detected.  Changing map in %d seconds...",
+				RoundToFloor(g_ConVarDurationFromMapStart.FloatValue));
+		CreateBotChangeMapTimer(g_ConVarDurationFromMapStart.FloatValue);
 	}
 }
 
@@ -92,10 +110,13 @@ public void Hook_OnGameOver(Event event, const char[] name, bool dontBroadcast) 
 
 public Action Hook_OnPlayerDisconnect(Event event, const char[] name, bool dontBroadcast) {
 	if (!event.GetBool("bot") && IsLowPlayerCount() && !IsCurrentMapSuitable()) {
-		PrintToServer("Server has emptied.  Attempt to change map in 1.5 minutes...");
+		float flSecondsToNextMap = g_ConVarDurationFromDisconnect.FloatValue;
+		int nSecondsToNextMap = RoundToFloor(flSecondsToNextMap);
+		PrintToServer("Server has emptied.  Attempt to change map in %d seconds...", nSecondsToNextMap);
 		
-		PrintToChatAll("Looks like the server emptied out!  If nobody joins, we'll switch to a bot-supported map in 1.5 minutes.");
-		CreateBotChangeMapTimer(90.0);
+		PrintToChatAll("Looks like the server emptied out!  " ...
+				"If nobody joins, we'll switch to a bot-supported map in %d seconds.", nSecondsToNextMap);
+		CreateBotChangeMapTimer(flSecondsToNextMap);
 	}
 }
 
@@ -227,7 +248,39 @@ bool IsCurrentMapSuitable() {
  */
 bool IsLowPlayerCount() {
 	// TODO extended support
-	return GetLivePlayerCount() < 2;
+	return GetLivePlayerCount() < GetPlayerCountThreshold();
+}
+
+/**
+ * Returns the player count threshold, reading from sm_bot_quota or tf_bot_quota if not set to a number.
+ */
+int GetPlayerCountThreshold() {
+	char thresholdValue[8];
+	g_ConVarPlayerCountThreshold.GetString(thresholdValue, sizeof(thresholdValue));
+	
+	if (StrEqual(thresholdValue, "quota", false)) {
+		// Always recheck to make sure it wasn't loaded without our knowledge
+		ConVar conVarBotQuota = FindConVar("sm_bot_quota");
+		
+		if (conVarBotQuota != null) {
+			return conVarBotQuota.IntValue;
+		} else {
+			// TODO make sure quota mode is not "match"
+			conVarBotQuota = FindConVar("tf_bot_quota");
+			ConVar conVarQuotaMode = FindConVar("tf_bot_quota_mode");
+			
+			char quotaMode[8];
+			conVarQuotaMode.GetString(quotaMode, sizeof(quotaMode));
+			
+			if (!StrEqual(quotaMode, "match")) {
+				return conVarBotQuota.IntValue;
+			} else {
+				// If you're matching, then I guess you always want bots to run.
+				return MaxClients;
+			}
+		}
+	}
+	return g_ConVarPlayerCountThreshold.IntValue;
 }
 
 /**
