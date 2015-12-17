@@ -9,7 +9,7 @@
 
 #pragma newdecls required
 
-#define PLUGIN_VERSION "0.4.2"
+#define PLUGIN_VERSION "0.4.3"
 public Plugin myinfo = {
 	name = "[TF2] Bot Map Runner",
 	author = "nosoop",
@@ -62,12 +62,12 @@ public void OnPluginStart() {
 }
 
 public void OnMapStart() {
-	GenerateBotMapLists();
-	
 	g_flServerMapTriggerTime = 0.0;
 }
 
 public void OnConfigsExecuted() {
+	GenerateBotMapLists();
+	
 	// We check here to make sure we're not stranded on a bot map and cvar data has been updated.
 	if (IsLowPlayerCount() && !IsCurrentMapSuitable() && GetConnectingPlayerCount() == 0) {
 		PrintToServer("No players detected.  Changing map in %d seconds...",
