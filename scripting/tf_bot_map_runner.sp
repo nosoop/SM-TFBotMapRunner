@@ -9,7 +9,7 @@
 
 #pragma newdecls required
 
-#define PLUGIN_VERSION "0.4.3"
+#define PLUGIN_VERSION "0.4.4"
 public Plugin myinfo = {
 	name = "[TF2] Bot Map Runner",
 	author = "nosoop",
@@ -30,7 +30,7 @@ ConVar g_ConVarDurationFromMapStart, g_ConVarDurationFromDisconnect, g_ConVarPla
 public void OnPluginStart() {
 	LoadTranslations("mapchooser.phrases");
 	
-	CreateConVar("botmaprunner_version", PLUGIN_VERSION, "Current version of Bot Map Runner.", FCVAR_PLUGIN | FCVAR_NOTIFY | FCVAR_DONTRECORD);
+	CreateConVar("botmaprunner_version", PLUGIN_VERSION, "Current version of Bot Map Runner.", FCVAR_NOTIFY | FCVAR_DONTRECORD);
 
 	RegAdminCmd("sm_botmap", AdminCmd_BotMap, ADMFLAG_CHANGEMAP, "Immediately changes to a bot-compatible map.");
 	RegAdminCmd("sm_setnextbotmap", AdminCmd_SetNextBotMap, ADMFLAG_CHANGEMAP, "Changes the next map to a bot-compatible map.");
@@ -42,19 +42,17 @@ public void OnPluginStart() {
 	
 	HookEvent("player_spawn", Hook_OnPlayerSpawn, EventHookMode_Post);
 	
-	// TODO ConVars:
 	g_ConVarPlayerCountThreshold = CreateConVar("sm_botmap_playercount", "2",
 			"Server is considered below the player count threshold if there are fewer than this number of players.  " ...
-			"If set to 'quota', then the server uses tf_bot_quota or sm_bot_quota as the threshold.",
-			FCVAR_PLUGIN);
+			"If set to 'quota', then the server uses tf_bot_quota or sm_bot_quota as the threshold.");
 	
 	g_ConVarDurationFromMapStart = CreateConVar("sm_botmap_duration_frommapstart", "90.0",
 			"How long before a map change if the server is below the player count threshold on map start.",
-			FCVAR_PLUGIN, true, 0.0);
+			_, true, 0.0);
 	
 	g_ConVarDurationFromDisconnect = CreateConVar("sm_botmap_duration_fromdisconnect", "90.0",
 			"How long before a map change when a player disconnect puts the player count below the threshold.",
-			FCVAR_PLUGIN, true, 0.0);
+			_, true, 0.0);
 	
 	AutoExecConfig();
 	
@@ -103,7 +101,8 @@ public void Hook_OnGameOver(Event event, const char[] name, bool dontBroadcast) 
 		
 		LogMessage("Not many active players.  Changing next map to %s for bot support.", nextmap);
 		
-		// TODO resolve map name
+		Compat_GetMapDisplayName(nextmap, nextmap, sizeof(nextmap));
+		
 		PrintToChatAll("Server's pretty empty.  Changing the next map to %s so the bots keep playing.", nextmap);
 	}
 }
@@ -158,7 +157,19 @@ public Action Timer_AdminCmdBotMap(Handle timer) {
 }
 
 void GenerateBotMapLists() {
-	g_ValidBotMaps.Clear();
+	char map[MAP_NAME_LENGTH];
+	
+	// TODO if current map is currently a valid map, then add it to g_ValidBotMaps after clearing
+	// otherwise, if the mapcycle was changed it might not be a valid map anymore
+	GetCurrentMap(map, sizeof(map));
+	FindMap(map, map, sizeof(map));
+	
+	if (IsSuitableBotMap(map)) {
+		g_ValidBotMaps.Clear();
+		g_ValidBotMaps.PushString(map);
+	} else {
+		g_ValidBotMaps.Clear();
+	}
 	
 	ArrayList includedBotMaps = new ArrayList(MAP_NAME_LENGTH);
 	ArrayList excludedBotMaps = new ArrayList(MAP_NAME_LENGTH);
@@ -166,8 +177,6 @@ void GenerateBotMapLists() {
 	GetExcludeMapList(excludedBotMaps);
 	
 	ParseOverrides(includedBotMaps, excludedBotMaps);
-	
-	char map[MAP_NAME_LENGTH];
 	
 	// Resolve map names
 	for (int i = 0; i < includedBotMaps.Length; i++) {
@@ -269,13 +278,12 @@ int GetPlayerCountThreshold() {
 	
 	int nPlayerThreshold;
 	if (StrEqual(thresholdValue, "quota", false)) {
-		// Always recheck to make sure it wasn't loaded without our knowledge
+		// The Bot Manager plugin is prioritized over the built-in bot quota.
 		ConVar conVarBotQuota = FindConVar("sm_bot_quota");
 		
 		if (conVarBotQuota != null) {
 			nPlayerThreshold = conVarBotQuota.IntValue;
 		} else {
-			// TODO make sure quota mode is not "match"
 			conVarBotQuota = FindConVar("tf_bot_quota");
 			ConVar conVarQuotaMode = FindConVar("tf_bot_quota_mode");
 			
@@ -339,6 +347,17 @@ void ParseOverrides(ArrayList includedMaps, ArrayList excludedMaps) {
 			delete overrideReader;
 		}
 	}
+}
+
+/**
+ * Compile-time compatibility check for 1.8
+ */
+void Compat_GetMapDisplayName(const char[] map, char[] buffer, int length) {
+	#if SOURCEMOD_V_MAJOR == 1 && SOURCEMOD_V_MINOR <= 7
+	strcopy(buffer, length, map);
+	#else
+	GetMapDisplayName(map, buffer, length);
+	#endif
 }
 
 /**
