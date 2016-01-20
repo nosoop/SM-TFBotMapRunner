@@ -1,0 +1,9 @@
+; Bot Map Runner Overrides
+; -- Bots do not work on the following maps --
+
+; Bots don't run at all
+- rd_asteroid
+- plr_hightower_event
+
+; Map event needs to be triggered for things to run
+- sd_doomsday_event
