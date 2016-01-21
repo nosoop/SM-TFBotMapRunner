@@ -4,9 +4,9 @@ A SourceMod plugin that restricts the server to run bot-supported maps when the 
 ## About
 I think TF2 community server owners know the feeling.  Their server is dead all the time, and people aren't joining.  People say that they'd like to join, but "if only there were people on...".  It's an unfortunate catch-22 situation.
 
-To give the server some activity while nobody is around (and waste CPU time while you're at it), you'd use bots.  Unfortunately, maps require navmeshes (navigation meshes) for bots to function.  And they take time to generate.  And maybe some time to fine-tune.  And they don't work for every game mode.
+To give the server some activity while nobody is around (and waste CPU time while you're at it), you'd use bots.  Unfortunately, maps require navmeshes (navigation meshes) for bots to function.  And they take time to generate.  And maybe some time to fine-tune.  And they don't work for every game mode and map that you have in your mapcycle.
 
-This plugin serves the purpose of allowing the first player to stumble on an unpopulated server to play with bots.  It does this by enforcing the use of maps that have generated navmeshes if the human playing count falls below a specific configurable threshold.
+This plugin serves the purpose of allowing the first player to stumble on an unpopulated server to play with bots.  It does this by enforcing the use of maps that have generated navmeshes if the human playing count falls below a specific configurable threshold.  It does not, however, set up bots for you (it's up to you to set up `tf_bot_quota`).
 
 Generated navmeshes are detected if it exists in the mounted filesystems.  Peeking inside BSPs is not supported yet, so you will need to do that manually (see the installation section below).
 
