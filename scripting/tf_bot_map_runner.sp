@@ -9,7 +9,7 @@
 
 #pragma newdecls required
 
-#define PLUGIN_VERSION "0.4.4"
+#define PLUGIN_VERSION "0.4.6"
 public Plugin myinfo = {
 	name = "[TF2] Bot Map Runner",
 	author = "nosoop",
@@ -28,6 +28,8 @@ float g_flServerMapTriggerTime;
 ConVar g_ConVarDurationFromMapStart, g_ConVarDurationFromDisconnect, g_ConVarPlayerCountThreshold;
 
 public void OnPluginStart() {
+	g_ValidBotMaps = new ArrayList(MAP_NAME_LENGTH);
+	
 	LoadTranslations("mapchooser.phrases");
 	
 	CreateConVar("botmaprunner_version", PLUGIN_VERSION, "Current version of Bot Map Runner.", FCVAR_NOTIFY | FCVAR_DONTRECORD);
@@ -56,7 +58,7 @@ public void OnPluginStart() {
 	
 	AutoExecConfig();
 	
-	g_ValidBotMaps = new ArrayList(MAP_NAME_LENGTH);
+	FindConVar("sm_nextmap").AddChangeHook(OnNextMapChanged);
 }
 
 public void OnMapStart() {
@@ -97,11 +99,16 @@ public Action AdminCmd_RefreshMapList(int client, int nArgs) {
 public void Hook_OnGameOver(Event event, const char[] name, bool dontBroadcast) {
 	if (IsLowPlayerCount()) {
 		char nextmap[MAP_NAME_LENGTH];
+		FindConVar("sm_nextmap").GetString(nextmap, sizeof(nextmap));
+		if (IsSuitableBotMap(nextmap)) {
+			return;
+		}
+		
 		OverrideNextMapForBot(nextmap, sizeof(nextmap));
 		
 		LogMessage("Not many active players.  Changing next map to %s for bot support.", nextmap);
 		
-		Compat_GetMapDisplayName(nextmap, nextmap, sizeof(nextmap));
+		GetMapDisplayName(nextmap, nextmap, sizeof(nextmap));
 		
 		PrintToChatAll("Server's pretty empty.  Changing the next map to %s so the bots keep playing.", nextmap);
 	}
@@ -159,11 +166,15 @@ public Action Timer_AdminCmdBotMap(Handle timer) {
 void GenerateBotMapLists() {
 	char map[MAP_NAME_LENGTH];
 	
-	// TODO if current map is currently a valid map, then add it to g_ValidBotMaps after clearing
-	// otherwise, if the mapcycle was changed it might not be a valid map anymore
+	// Check if this map was already allowed (in case we switched map cycles)
 	GetCurrentMap(map, sizeof(map));
-	FindMap(map, map, sizeof(map));
 	
+	/**
+	 * Remember, IsSuitableBotMap checks the g_ValidBotMaps list;
+	 * clearing it before checking would be bad.
+	 * 
+	 * ... I keep forgetting that's a thing that would happen.
+	 */
 	if (IsSuitableBotMap(map)) {
 		g_ValidBotMaps.Clear();
 		g_ValidBotMaps.PushString(map);
@@ -250,7 +261,10 @@ bool OverrideNextMapForBot(char[] nextmap, int length, bool bForce = true) {
 }
 
 bool IsSuitableBotMap(const char[] map) {
-	return g_ValidBotMaps.FindString(map) > -1;
+	char mapName[MAP_NAME_LENGTH];
+	FindMap(map, mapName, sizeof(mapName));
+	
+	return g_ValidBotMaps.FindString(mapName) > -1;
 }
 
 bool IsCurrentMapSuitable() {
@@ -258,6 +272,16 @@ bool IsCurrentMapSuitable() {
 	GetCurrentMap(currentmap, sizeof(currentmap));
 	
 	return IsSuitableBotMap(currentmap);
+}
+
+/**
+ * On a low playercount, warns all players if the next map does not support bots.
+ */
+public void OnNextMapChanged(ConVar convar, const char[] oldValue, const char[] newValue) {
+	if (!IsSuitableBotMap(newValue) && IsLowPlayerCount()) {
+		PrintToChatAll("The next map does not support bots.\n"
+				... "(In the event the server remains empty, the map will automatically be changed to one that does.)");
+	}
 }
 
 /**
@@ -347,17 +371,6 @@ void ParseOverrides(ArrayList includedMaps, ArrayList excludedMaps) {
 			delete overrideReader;
 		}
 	}
-}
-
-/**
- * Compile-time compatibility check for 1.8
- */
-void Compat_GetMapDisplayName(const char[] map, char[] buffer, int length) {
-	#if SOURCEMOD_V_MAJOR == 1 && SOURCEMOD_V_MINOR <= 7
-	strcopy(buffer, length, map);
-	#else
-	GetMapDisplayName(map, buffer, length);
-	#endif
 }
 
 /**
