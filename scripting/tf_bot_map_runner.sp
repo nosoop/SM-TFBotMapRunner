@@ -9,7 +9,7 @@
 
 #pragma newdecls required
 
-#define PLUGIN_VERSION "0.4.6"
+#define PLUGIN_VERSION "0.4.7"
 public Plugin myinfo = {
 	name = "[TF2] Bot Map Runner",
 	author = "nosoop",
@@ -213,10 +213,11 @@ void GenerateBotMapLists() {
 			 * Current stable *does* have map resolving capabilities.
 			 * It's not listed in the API, though...
 			 */
-			FindMap(map, map, sizeof(map));
+			FindMapResult mapAvailability = FindMap(map, map, sizeof(map));
 			
 			if (includedBotMaps.FindString(map) > -1 ||
-					(excludedBotMaps.FindString(map) == -1 && MapHasNavigationMesh(map)) ) {
+					(excludedBotMaps.FindString(map) == -1 && MapHasNavigationMesh(map)
+					&& mapAvailability != FindMap_PossiblyAvailable) ) {
 				g_ValidBotMaps.PushString(map);
 			}
 		}
@@ -262,7 +263,7 @@ bool OverrideNextMapForBot(char[] nextmap, int length, bool bForce = true) {
 
 bool IsSuitableBotMap(const char[] map) {
 	char mapName[MAP_NAME_LENGTH];
-	FindMap(map, mapName, sizeof(mapName));
+	FindMapResult mapAvailability = FindMap(map, mapName, sizeof(mapName));
 	
 	return g_ValidBotMaps.FindString(mapName) > -1;
 }
