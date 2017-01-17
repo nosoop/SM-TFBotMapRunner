@@ -6,10 +6,11 @@
 #include <sourcemod>
 #include <mapchooser>
 #include <tf2>
+#tryinclude <steamtools>
 
 #pragma newdecls required
 
-#define PLUGIN_VERSION "0.4.7"
+#define PLUGIN_VERSION "0.4.8"
 public Plugin myinfo = {
 	name = "[TF2] Bot Map Runner",
 	author = "nosoop",
@@ -209,6 +210,13 @@ void GenerateBotMapLists() {
 		for (int i = 0; i < mapList.Length; i++) {
 			mapList.GetString(i, map, sizeof(map));
 			
+			#if defined _steamtools_included
+			// fix for workshop unavailability
+			if (!Steam_IsConnected() && StrContains(map, "workshop/") == 0) {
+				continue;
+			}
+			#endif
+			
 			/**
 			 * Current stable *does* have map resolving capabilities.
 			 * It's not listed in the API, though...
@@ -216,12 +224,14 @@ void GenerateBotMapLists() {
 			FindMapResult mapAvailability = FindMap(map, map, sizeof(map));
 			
 			if (includedBotMaps.FindString(map) > -1 ||
-					(excludedBotMaps.FindString(map) == -1 && MapHasNavigationMesh(map)
-					&& mapAvailability != FindMap_PossiblyAvailable) ) {
+					(excludedBotMaps.FindString(map) == -1 && MapHasNavigationMesh(map)) ) {
 				g_ValidBotMaps.PushString(map);
 			}
 		}
 	}
+	
+	// TODO add all bot-supported maps if the pool is too small
+	
 	delete mapList;
 	delete includedBotMaps;
 	delete excludedBotMaps;
@@ -263,7 +273,7 @@ bool OverrideNextMapForBot(char[] nextmap, int length, bool bForce = true) {
 
 bool IsSuitableBotMap(const char[] map) {
 	char mapName[MAP_NAME_LENGTH];
-	FindMapResult mapAvailability = FindMap(map, mapName, sizeof(mapName));
+	FindMap(map, mapName, sizeof(mapName));
 	
 	return g_ValidBotMaps.FindString(mapName) > -1;
 }
